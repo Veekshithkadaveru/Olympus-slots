@@ -40,9 +40,9 @@ fun OlympusNavGraph(
         navController = navController,
         startDestination = Screen.Home.route,
         enterTransition = { fadeIn(tween(300)) + slideInHorizontally(tween(300)) { it / 4 } },
-        exitTransition = { fadeOut(tween(300)) },
+        exitTransition = { fadeOut(tween(200)) + slideOutHorizontally(tween(300)) { -it / 4 } },
         popEnterTransition = { fadeIn(tween(300)) + slideInHorizontally(tween(300)) { -it / 4 } },
-        popExitTransition = { fadeOut(tween(300)) + slideOutHorizontally(tween(300)) { it / 4 } }
+        popExitTransition = { fadeOut(tween(200)) + slideOutHorizontally(tween(300)) { it / 4 } }
     ) {
         composable(Screen.Home.route) {
             val coinBalance by coinViewModel.coinBalance.collectAsState()

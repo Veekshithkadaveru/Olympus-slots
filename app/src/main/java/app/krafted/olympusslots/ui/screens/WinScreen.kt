@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.krafted.olympusslots.game.God
 import app.krafted.olympusslots.game.GodPower
+import app.krafted.olympusslots.ui.components.GodPowerOverlay
 import app.krafted.olympusslots.ui.theme.*
 import kotlinx.coroutines.delay
 
@@ -95,6 +96,10 @@ fun WinOverlayThreeOfAKind(
                     .fillMaxSize()
                     .background(Color(0xDD000000))
             )
+        }
+
+        if (showContent) {
+            GodPowerOverlay(god = god)
         }
 
         Column(

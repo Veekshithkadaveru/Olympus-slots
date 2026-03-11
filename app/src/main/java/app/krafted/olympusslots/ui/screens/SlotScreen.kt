@@ -299,36 +299,49 @@ private fun ReelRow(
 
 @Composable
 private fun GodBannerText(uiState: SlotUiState) {
-    val text = when (uiState.spinPhase) {
-        SpinPhase.IDLE -> "Spin the Reels"
-        SpinPhase.SPINNING -> "The gods decide..."
-        SpinPhase.RESOLVING -> "Revealing fate..."
+    data class BannerState(val text: String, val color: Color, val fontSize: Int)
+
+    val bannerState = when (uiState.spinPhase) {
+        SpinPhase.IDLE -> BannerState("Spin the Reels", OlympusCream, 16)
+        SpinPhase.SPINNING -> BannerState("The gods decide...", OlympusCream, 16)
+        SpinPhase.RESOLVING -> BannerState("Revealing fate...", OlympusCream, 16)
         SpinPhase.RESULT -> when (val result = uiState.winResult) {
-            is WinResult.ThreeOfAKind -> "${result.god.displayName} - ${result.god.domain}"
-            is WinResult.TwoOfAKind -> "${result.god.displayName} appears!"
-            is WinResult.NoMatch -> "No favour this time"
-            null -> ""
+            is WinResult.ThreeOfAKind -> BannerState(
+                "${result.god.displayName} - ${result.god.domain}", OlympusGold, 20
+            )
+            is WinResult.TwoOfAKind -> BannerState(
+                "${result.god.displayName} appears!", OlympusGoldLight, 16
+            )
+            is WinResult.NoMatch -> BannerState("No favour this time", Color(0xFFBBBBBB), 16)
+            null -> BannerState("", OlympusCream, 16)
         }
     }
 
-    val textColor = when (uiState.spinPhase) {
-        SpinPhase.RESULT -> when (uiState.winResult) {
-            is WinResult.ThreeOfAKind -> OlympusGold
-            is WinResult.TwoOfAKind -> OlympusGoldLight
-            else -> Color(0xFF888888)
+    Crossfade(
+        targetState = bannerState,
+        animationSpec = tween(300),
+        label = "bannerText"
+    ) { state ->
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = state.text,
+                color = state.color,
+                fontSize = state.fontSize.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                letterSpacing = 2.sp,
+                modifier = Modifier
+                    .background(
+                        color = Color.Black.copy(alpha = 0.55f),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                    .padding(horizontal = 20.dp, vertical = 6.dp)
+            )
         }
-        else -> OlympusCream
     }
-
-    Text(
-        text = text,
-        color = textColor,
-        fontSize = if (uiState.spinPhase == SpinPhase.RESULT && uiState.winResult is WinResult.ThreeOfAKind) 20.sp else 16.sp,
-        fontWeight = FontWeight.Bold,
-        textAlign = TextAlign.Center,
-        letterSpacing = 2.sp,
-        modifier = Modifier.padding(horizontal = 16.dp)
-    )
 }
 
 @Composable
@@ -388,20 +401,6 @@ private fun WinResultDisplay(uiState: SlotUiState) {
         }
     }
 
-    // No match text
-    AnimatedVisibility(
-        visible = uiState.spinPhase == SpinPhase.RESULT && uiState.winResult is WinResult.NoMatch,
-        enter = fadeIn(),
-        exit = fadeOut()
-    ) {
-        Text(
-            text = "Try again...",
-            color = Color(0xFF666666),
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Medium,
-            letterSpacing = 1.sp
-        )
-    }
 }
 
 @Composable

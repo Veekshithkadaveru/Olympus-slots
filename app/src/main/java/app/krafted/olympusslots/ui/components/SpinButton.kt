@@ -12,6 +12,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -34,96 +35,228 @@ fun SpinButton(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
-    // Pulsing glow when enabled and idle
-    val infiniteTransition = rememberInfiniteTransition(label = "spinPulse")
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.5f,
-        targetValue = 1f,
+    val infiniteTransition = rememberInfiniteTransition(label = "epicBtn")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = if (isEnabled) 1.06f else 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = EaseInOutSine),
+            animation = tween(1800, easing = EaseInOutSine),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "pulseAlpha"
+        label = "epicPulse"
+    )
+    val ringRotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = if (isEnabled) 360f else 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(6000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "ringRot"
+    )
+    val glowAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = if (isEnabled) 1f else 0.4f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1800, easing = EaseInOutSine),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "epicGlow"
     )
 
-    val scale by animateFloatAsState(
+    val pressScale by animateFloatAsState(
         targetValue = when {
-            !isEnabled -> 0.95f
-            isPressed -> 0.92f
+            !isEnabled -> 1f
+            isPressed -> 0.88f
             else -> 1f
         },
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-        label = "scale"
+        label = "pressScale"
     )
 
-    val shape = RoundedCornerShape(16.dp)
-    val gradientColors = if (isEnabled) {
-        if (isFree) {
-            listOf(PoseidonBlue, Color(0xFF0097A7))
-        } else {
-            listOf(OlympusGold, OlympusGoldDark)
-        }
-    } else {
-        listOf(Color(0xFF555555), Color(0xFF333333))
-    }
+    val buttonSize = 130.dp
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 32.dp)
-            .height(60.dp)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-            .shadow(
-                elevation = if (isEnabled) 12.dp else 4.dp,
-                shape = shape,
-                ambientColor = if (isEnabled) OlympusGold.copy(alpha = 0.3f) else Color.Black,
-                spotColor = if (isEnabled) OlympusGold else Color.Black
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.size(buttonSize + 40.dp)
+        ) {
+            // Outermost soft glow
+            Box(
+                modifier = Modifier
+                    .size(buttonSize + 30.dp)
+                    .graphicsLayer { alpha = glowAlpha * 0.25f }
+                    .blur(20.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(if (isFree) PoseidonBlue else OlympusGold)
             )
-            .clip(shape)
-            .background(Brush.horizontalGradient(gradientColors))
-            .then(
-                if (isEnabled) {
-                    Modifier.border(
-                        width = 2.dp,
-                        brush = Brush.horizontalGradient(
+
+            if (isEnabled) {
+                // Rotating outer ring with sweep gradient
+                androidx.compose.foundation.Canvas(
+                    modifier = Modifier
+                        .size(buttonSize + 16.dp)
+                        .graphicsLayer { rotationZ = ringRotation }
+                ) {
+                    drawCircle(
+                        brush = Brush.sweepGradient(
                             listOf(
-                                OlympusGoldLight.copy(alpha = pulseAlpha),
-                                OlympusGold.copy(alpha = pulseAlpha * 0.7f),
-                                OlympusGoldLight.copy(alpha = pulseAlpha)
+                                OlympusGoldLight,
+                                Color.Transparent,
+                                OlympusGold,
+                                Color.Transparent,
+                                OlympusGoldLight,
+                                Color.Transparent
                             )
                         ),
-                        shape = shape
+                        radius = size.minDimension / 2,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx())
                     )
-                } else Modifier
+                }
+            }
+
+            // Static middle ring
+            Box(
+                modifier = Modifier
+                    .size(buttonSize + 8.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .border(
+                        width = 3.dp,
+                        brush = Brush.verticalGradient(
+                            if (isEnabled) listOf(
+                                OlympusGoldLight.copy(alpha = 0.9f),
+                                OlympusGoldDark.copy(alpha = 0.6f),
+                                OlympusBronze.copy(alpha = 0.8f)
+                            ) else listOf(Color.Gray, Color.DarkGray)
+                        ),
+                        shape = androidx.compose.foundation.shape.CircleShape
+                    )
             )
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                enabled = isEnabled,
-                onClick = onClick
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = if (isFree) "FREE SPIN" else "SPIN",
-                color = if (isEnabled) OlympusPurpleDeep else Color.Gray,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Black,
-                textAlign = TextAlign.Center,
-                letterSpacing = 3.sp
-            )
-            if (!isFree && isEnabled) {
-                Text(
-                    text = "$spinCost coins",
-                    color = OlympusPurpleDeep.copy(alpha = 0.7f),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    letterSpacing = 1.sp
+
+            val innerGradient = if (isEnabled) {
+                if (isFree) arrayOf(
+                    0f to Color(0xFFE0F7FA),
+                    0.3f to PoseidonBlue,
+                    0.7f to Color(0xFF006064),
+                    1f to Color(0xFF004D40)
+                ) else arrayOf(
+                    0f to Color(0xFFFFF5CC),
+                    0.3f to OlympusGold,
+                    0.7f to OlympusGoldDark,
+                    1f to Color(0xFF8B6914)
                 )
+            } else {
+                arrayOf(
+                    0f to Color(0xFF888888),
+                    1f to Color(0xFF333333)
+                )
+            }
+
+            // Main circular button
+            Box(
+                modifier = Modifier
+                    .size(buttonSize)
+                    .graphicsLayer {
+                        scaleX = pulseScale * pressScale
+                        scaleY = pulseScale * pressScale
+                    }
+                    .shadow(
+                        elevation = if (isEnabled) 20.dp else 4.dp,
+                        shape = androidx.compose.foundation.shape.CircleShape,
+                        ambientColor = if (isEnabled) OlympusGold.copy(alpha = 0.4f) else Color.Black,
+                        spotColor = if (isEnabled) OlympusGold else Color.Black
+                    )
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(Brush.radialGradient(colorStops = innerGradient))
+                    .border(
+                        width = 2.dp,
+                        brush = Brush.verticalGradient(
+                            listOf(
+                                Color.White.copy(alpha = 0.6f),
+                                Color.Transparent,
+                                Color.Black.copy(alpha = 0.2f)
+                            )
+                        ),
+                        shape = androidx.compose.foundation.shape.CircleShape
+                    )
+                    .clickable(
+                        interactionSource = interactionSource,
+                        indication = null,
+                        enabled = isEnabled,
+                        onClick = onClick
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                // Inner highlight crescent at top
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.6f)
+                        .height(18.dp)
+                        .align(Alignment.TopCenter)
+                        .offset(y = 10.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    Color.White.copy(alpha = 0.4f),
+                                    Color.Transparent
+                                )
+                            ),
+                            shape = androidx.compose.foundation.shape.CircleShape
+                        )
+                )
+
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = if (isFree) "FREE" else "SPIN",
+                        style = androidx.compose.ui.text.TextStyle(
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 4.sp,
+                            color = if (isEnabled) OlympusPurpleDeep else Color.DarkGray,
+                            shadow = if (isEnabled) androidx.compose.ui.graphics.Shadow(
+                                color = OlympusGold.copy(alpha = 0.5f),
+                                offset = androidx.compose.ui.geometry.Offset(0f, 2f),
+                                blurRadius = 4f
+                            ) else null
+                        )
+                    )
+                    if (!isFree && isEnabled) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Box(
+                            modifier = Modifier
+                                .width(50.dp)
+                                .height(1.5.dp)
+                                .background(
+                                    Brush.horizontalGradient(
+                                        listOf(Color.Transparent, OlympusPurpleDeep.copy(alpha = 0.5f), Color.Transparent)
+                                    )
+                                )
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "$spinCost COINS",
+                            style = androidx.compose.ui.text.TextStyle(
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 2.sp,
+                                color = OlympusPurpleDeep.copy(alpha = 0.7f)
+                            )
+                        )
+                    } else if (isFree && isEnabled) {
+                        Text(
+                            text = "SPIN",
+                            style = androidx.compose.ui.text.TextStyle(
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 3.sp,
+                                color = OlympusPurpleDeep.copy(alpha = 0.8f)
+                            )
+                        )
+                    }
+                }
             }
         }
     }
