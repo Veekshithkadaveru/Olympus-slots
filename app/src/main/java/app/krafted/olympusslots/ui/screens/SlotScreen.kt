@@ -38,17 +38,26 @@ fun SlotScreen(
         else -> null
     }
     val isThreeOfAKind = uiState.winResult is WinResult.ThreeOfAKind
+    val isZeusJackpot = uiState.winResult is WinResult.ThreeOfAKind &&
+            (uiState.winResult as WinResult.ThreeOfAKind).god == God.ZEUS
 
-    // Auto-reset to idle after showing result
+    var showJackpotOverlay by remember { mutableStateOf(false) }
+
+    // Show jackpot overlay on Zeus win, auto-reset others
     LaunchedEffect(uiState.spinPhase) {
         if (uiState.spinPhase == SpinPhase.RESULT) {
-            kotlinx.coroutines.delay(if (isThreeOfAKind) 4000L else 2500L)
-            onResetToIdle()
+            if (isZeusJackpot) {
+                kotlinx.coroutines.delay(500L)
+                showJackpotOverlay = true
+            } else {
+                kotlinx.coroutines.delay(if (isThreeOfAKind) 4000L else 2500L)
+                onResetToIdle()
+            }
         }
     }
 
-    BackgroundScene(background = uiState.currentBackground) {
-        Box(modifier = modifier.fillMaxSize()) {
+    Box(modifier = modifier.fillMaxSize()) {
+        BackgroundScene(background = uiState.currentBackground) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -133,6 +142,21 @@ fun SlotScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
             }
+        }
+
+        // Jackpot overlay
+        AnimatedVisibility(
+            visible = showJackpotOverlay,
+            enter = fadeIn(tween(200)),
+            exit = fadeOut(tween(400))
+        ) {
+            JackpotOverlay(
+                coinsWon = (uiState.winResult as? WinResult.ThreeOfAKind)?.payout ?: 500,
+                onDismiss = {
+                    showJackpotOverlay = false
+                    onResetToIdle()
+                }
+            )
         }
     }
 }
