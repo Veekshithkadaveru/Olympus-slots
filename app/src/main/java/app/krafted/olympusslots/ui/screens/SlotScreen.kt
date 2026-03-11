@@ -42,16 +42,23 @@ fun SlotScreen(
             (uiState.winResult as WinResult.ThreeOfAKind).god == God.ZEUS
 
     var showJackpotOverlay by remember { mutableStateOf(false) }
+    var showWinOverlay by remember { mutableStateOf(false) }
 
-    // Show jackpot overlay on Zeus win, auto-reset others
     LaunchedEffect(uiState.spinPhase) {
         if (uiState.spinPhase == SpinPhase.RESULT) {
-            if (isZeusJackpot) {
-                kotlinx.coroutines.delay(500L)
-                showJackpotOverlay = true
-            } else {
-                kotlinx.coroutines.delay(if (isThreeOfAKind) 4000L else 2500L)
-                onResetToIdle()
+            when {
+                isZeusJackpot -> {
+                    kotlinx.coroutines.delay(500L)
+                    showJackpotOverlay = true
+                }
+                isWin -> {
+                    kotlinx.coroutines.delay(500L)
+                    showWinOverlay = true
+                }
+                else -> {
+                    kotlinx.coroutines.delay(2500L)
+                    onResetToIdle()
+                }
             }
         }
     }
@@ -141,6 +148,31 @@ fun SlotScreen(
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))
+            }
+        }
+
+        // Win overlay (non-Zeus)
+        AnimatedVisibility(
+            visible = showWinOverlay,
+            enter = fadeIn(tween(200)),
+            exit = fadeOut(tween(300))
+        ) {
+            val dismissWin = {
+                showWinOverlay = false
+                onResetToIdle()
+            }
+            when (val result = uiState.winResult) {
+                is WinResult.ThreeOfAKind -> WinOverlayThreeOfAKind(
+                    god = result.god,
+                    payout = result.payout,
+                    godPower = uiState.lastGodPower,
+                    onDismiss = dismissWin
+                )
+                is WinResult.TwoOfAKind -> WinOverlayTwoOfAKind(
+                    payout = result.payout,
+                    onDismiss = dismissWin
+                )
+                else -> {}
             }
         }
 
