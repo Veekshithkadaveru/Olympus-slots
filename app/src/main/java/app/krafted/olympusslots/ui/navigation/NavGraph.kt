@@ -21,6 +21,7 @@ import app.krafted.olympusslots.viewmodel.CoinViewModel
 import app.krafted.olympusslots.viewmodel.SlotViewModel
 
 sealed class Screen(val route: String) {
+    object Splash : Screen("splash")
     object Home : Screen("home")
     object Slot : Screen("slot")
     object DailyBonus : Screen("daily_bonus")
@@ -38,12 +39,20 @@ fun OlympusNavGraph(
 
     NavHost(
         navController = navController,
-        startDestination = Screen.Home.route,
+        startDestination = Screen.Splash.route,
         enterTransition = { fadeIn(tween(300)) + slideInHorizontally(tween(300)) { it / 4 } },
         exitTransition = { fadeOut(tween(200)) + slideOutHorizontally(tween(300)) { -it / 4 } },
         popEnterTransition = { fadeIn(tween(300)) + slideInHorizontally(tween(300)) { -it / 4 } },
         popExitTransition = { fadeOut(tween(200)) + slideOutHorizontally(tween(300)) { it / 4 } }
     ) {
+        composable(Screen.Splash.route) {
+            app.krafted.olympusslots.ui.screens.SplashScreen(onSplashComplete = {
+                navController.navigate(Screen.Home.route) {
+                    popUpTo(Screen.Splash.route) { inclusive = true }
+                }
+            })
+        }
+
         composable(Screen.Home.route) {
             val coinBalance by coinViewModel.coinBalance.collectAsState()
             val dailyBonusAvailable by coinViewModel.dailyBonusAvailable.collectAsState()

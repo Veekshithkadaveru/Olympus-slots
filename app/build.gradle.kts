@@ -64,4 +64,5 @@ dependencies {
     ksp(libs.androidx.room.compiler)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation("androidx.core:core-splashscreen:1.0.1")
 }
