@@ -3,7 +3,6 @@ package app.krafted.olympusslots.ui.navigation
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -69,16 +68,14 @@ fun OlympusNavGraph(
         composable(Screen.Slot.route) {
             val uiState by slotViewModel.uiState.collectAsState()
 
-            DisposableEffect(Unit) {
-                onDispose {
-                    coinViewModel.recordScore(slotViewModel.uiState.value.coinBalance)
-                }
-            }
-
             SlotScreen(
                 uiState = uiState,
                 onSpin = { slotViewModel.spin() },
-                onResetToIdle = { slotViewModel.resetToIdle() }
+                onResetToIdle = { slotViewModel.resetToIdle() },
+                onNavigateToDailyBonus = { navController.navigate(Screen.DailyBonus.route) },
+                onSubmitScore = { name -> coinViewModel.recordScore(name, uiState.coinBalance) },
+                onNewSession = { slotViewModel.startNewSession() },
+                onViewLeaderboard = { navController.navigate(Screen.Leaderboard.route) }
             )
         }
 

@@ -34,7 +34,8 @@ class CoinViewModel(private val playerDao: PlayerDao) : ViewModel() {
 
     init {
         viewModelScope.launch {
-            val existing = playerData.first { true }
+            // Query Room directly — NOT the StateFlow (which starts with null and would always trigger upsert)
+            val existing = playerDao.getPlayerData().first()
             if (existing == null) {
                 playerDao.upsertPlayerData(PlayerData())
             }
@@ -50,9 +51,11 @@ class CoinViewModel(private val playerDao: PlayerDao) : ViewModel() {
         }
     }
 
-    fun recordScore(score: Int) {
+    fun recordScore(playerName: String, score: Int) {
         viewModelScope.launch {
-            playerDao.insertLeaderboardEntry(LeaderboardEntry(score = score))
+            playerDao.insertLeaderboardEntry(
+                LeaderboardEntry(playerName = playerName.trim().ifEmpty { "Anonymous" }, score = score)
+            )
         }
     }
 }

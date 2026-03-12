@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.krafted.olympusslots.R
+import app.krafted.olympusslots.game.GameConstants
 import app.krafted.olympusslots.game.God
 import app.krafted.olympusslots.ui.theme.*
 import kotlin.math.PI
@@ -480,6 +481,14 @@ private fun GodShowcase() {
 // -- Circular casino-style play button --
 @Composable
 private fun EpicPlayButton(onClick: () -> Unit) {
+    var lastClickTime by remember { mutableLongStateOf(0L) }
+    val debouncedClick = {
+        val now = System.currentTimeMillis()
+        if (now - lastClickTime > 500L) {
+            lastClickTime = now
+            onClick()
+        }
+    }
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
@@ -614,7 +623,7 @@ private fun EpicPlayButton(onClick: () -> Unit) {
                     .clickable(
                         interactionSource = interactionSource,
                         indication = null,
-                        onClick = onClick
+                        onClick = debouncedClick
                     ),
                 contentAlignment = Alignment.Center
             ) {
@@ -679,7 +688,7 @@ private fun EpicPlayButton(onClick: () -> Unit) {
 
         // Cost label below the circle
         Text(
-            text = "10 coins per spin",
+            text = "${GameConstants.SPIN_COST} coins per spin",
             color = OlympusCream.copy(alpha = 0.5f),
             fontSize = 12.sp,
             fontWeight = FontWeight.Normal,

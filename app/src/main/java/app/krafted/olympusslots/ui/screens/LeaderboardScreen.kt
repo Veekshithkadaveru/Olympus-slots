@@ -201,21 +201,28 @@ private fun LeaderboardRow(rank: Int, entry: LeaderboardEntry) {
             color = rankColor,
             fontSize = if (rank <= 3) 20.sp else 16.sp,
             fontWeight = FontWeight.Black,
-            modifier = Modifier.width(48.dp)
+            modifier = Modifier.width(40.dp)
         )
 
-        Text(
-            text = "%,d coins".format(entry.score),
-            color = if (rank <= 3) rankColor else OlympusCream,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.weight(1f)
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = entry.playerName,
+                color = if (rank <= 3) rankColor else OlympusCream,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "%,d coins".format(entry.score),
+                color = if (rank <= 3) rankColor.copy(alpha = 0.8f) else OlympusCream.copy(alpha = 0.7f),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
 
         Text(
             text = formattedDate,
-            color = OlympusCream.copy(alpha = 0.5f),
-            fontSize = 12.sp,
+            color = OlympusCream.copy(alpha = 0.4f),
+            fontSize = 11.sp,
             fontWeight = FontWeight.Medium
         )
     }

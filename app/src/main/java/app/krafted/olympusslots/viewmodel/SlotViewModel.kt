@@ -35,17 +35,21 @@ data class SlotUiState(
     val lastGodPower: GodPower? = null,
     val hermesReshuffleCount: Int = 0,
     val isAutoReshuffling: Boolean = false,
-    val isLowBalance: Boolean = false
+    val isLowBalance: Boolean = false,
+    val paidSpinsUsed: Int = 0,
+    val sessionComplete: Boolean = false
 )
 
 class SlotViewModel(private val playerDao: PlayerDao) : ViewModel() {
     private val _uiState = MutableStateFlow(SlotUiState())
     val uiState: StateFlow<SlotUiState> = _uiState.asStateFlow()
 
+    private var isExecutingSpin = false
+
     init {
         viewModelScope.launch {
             playerDao.getPlayerData().collect { playerData ->
-                if (playerData != null) {
+                if (playerData != null && !isExecutingSpin) {
                     _uiState.update { it.copy(
                         coinBalance = playerData.coinBalance,
                         winStreak = playerData.currentWinStreak,
@@ -58,8 +62,10 @@ class SlotViewModel(private val playerDao: PlayerDao) : ViewModel() {
 
     fun canSpin(): Boolean {
         val state = _uiState.value
+        if (state.sessionComplete) return false
         if (state.freeSpinsRemaining > 0) return true
-        return state.coinBalance >= GameConstants.SPIN_COST
+        return state.coinBalance >= GameConstants.SPIN_COST &&
+                state.paidSpinsUsed < GameConstants.MAX_SPINS_PER_SESSION
     }
 
     fun spin() {
@@ -74,17 +80,22 @@ class SlotViewModel(private val playerDao: PlayerDao) : ViewModel() {
             spinPhase = SpinPhase.SPINNING,
             coinBalance = it.coinBalance - cost,
             freeSpinsRemaining = if (isFree) it.freeSpinsRemaining - 1 else it.freeSpinsRemaining,
+            paidSpinsUsed = if (isFree) it.paidSpinsUsed else it.paidSpinsUsed + 1,
             winResult = null,
             lastGodPower = null,
             currentBackground = Background.NEUTRAL
         )}
 
         viewModelScope.launch {
+            if (cost > 0) {
+                playerDao.updateCoinBalance(_uiState.value.coinBalance)
+            }
             executeSpin(isFree)
         }
     }
 
     private suspend fun executeSpin(isFree: Boolean) {
+        isExecutingSpin = true
         val stateBeforeSpin = _uiState.value
         val (r1, r2, r3) = ReelEngine.spinAllReels()
         delay(200)
@@ -97,6 +108,7 @@ class SlotViewModel(private val playerDao: PlayerDao) : ViewModel() {
         val result = WinResolver.resolve(r1, r2, r3)
         val background = resolveBackground(result)
         val isWin = result !is WinResult.NoMatch
+        val isStreakWin = result is WinResult.ThreeOfAKind
 
         var payout = when (result) {
             is WinResult.ThreeOfAKind -> result.payout
@@ -125,10 +137,12 @@ class SlotViewModel(private val playerDao: PlayerDao) : ViewModel() {
                 currentBackground = background,
                 lastGodPower = if (godPower is GodPower.None) null else godPower,
                 apolloDoubleActive = if (consumeApollo) false else it.apolloDoubleActive,
-                hermesReshuffleCount = if (isHermesReshuffle) it.hermesReshuffleCount + 1 else 0
+                hermesReshuffleCount = if (isHermesReshuffle) it.hermesReshuffleCount + 1 else 0,
+                // Clear auto-reshuffling flag atomically with RESULT so LaunchedEffect sees correct state
+                isAutoReshuffling = if (isHermesReshuffle) it.isAutoReshuffling else false
             )
             newState = applyGodPower(newState, godPower, isHermesReshuffle)
-            newState = updateWinStreak(newState, isWin)
+            newState = updateWinStreak(newState, isStreakWin)
             newState = newState.copy(
                 isLowBalance = newState.coinBalance < GameConstants.COIN_FLOOR && newState.freeSpinsRemaining <= 0
             )
@@ -162,16 +176,38 @@ class SlotViewModel(private val playerDao: PlayerDao) : ViewModel() {
             )}
             executeSpin(isFree = true)
         } else {
-            _uiState.update { it.copy(isAutoReshuffling = false) }
+            isExecutingSpin = false
+
+            // Check if session is complete (all paid spins used + no free spins left)
+            val finalState = _uiState.value
+            if (finalState.paidSpinsUsed >= GameConstants.MAX_SPINS_PER_SESSION &&
+                finalState.freeSpinsRemaining <= 0
+            ) {
+                _uiState.update { it.copy(sessionComplete = true) }
+            }
         }
     }
 
     fun resetToIdle() {
+        if (isExecutingSpin) return
         _uiState.update { it.copy(
             spinPhase = SpinPhase.IDLE,
             hermesReshuffleCount = 0,
             currentBackground = Background.NEUTRAL
         )}
+    }
+
+    fun startNewSession() {
+        _uiState.update {
+            SlotUiState(
+                coinBalance = GameConstants.STARTING_BALANCE,
+                dailyBonusAvailable = it.dailyBonusAvailable
+            )
+        }
+        viewModelScope.launch {
+            playerDao.updateCoinBalance(GameConstants.STARTING_BALANCE)
+            playerDao.updateWinStreak(0)
+        }
     }
 
     private fun applyGodPower(state: SlotUiState, power: GodPower?, isHermesReshuffle: Boolean = false): SlotUiState {

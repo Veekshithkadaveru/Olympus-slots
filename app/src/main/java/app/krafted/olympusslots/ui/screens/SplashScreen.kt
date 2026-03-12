@@ -67,7 +67,7 @@ fun SplashScreen(onSplashComplete: () -> Unit) {
             )
         ) {
             Image(
-                painter = painterResource(id = R.mipmap.ic_launcher_foreground),
+                painter = painterResource(id = R.drawable.splash_logo),
                 contentDescription = "App Logo",
                 modifier = Modifier
                     .size(240.dp)

@@ -1,9 +1,11 @@
 package app.krafted.olympusslots.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -29,6 +31,10 @@ fun SlotScreen(
     uiState: SlotUiState,
     onSpin: () -> Unit,
     onResetToIdle: () -> Unit,
+    onNavigateToDailyBonus: () -> Unit,
+    onSubmitScore: (String) -> Unit,
+    onNewSession: () -> Unit,
+    onViewLeaderboard: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isWin = uiState.winResult != null && uiState.winResult !is WinResult.NoMatch
@@ -47,12 +53,12 @@ fun SlotScreen(
     LaunchedEffect(uiState.spinPhase) {
         if (uiState.spinPhase == SpinPhase.RESULT) {
             when {
-                // Skip overlays during Hermes auto-reshuffle (VM handles the flow)
-                uiState.isAutoReshuffling -> { /* VM will auto-trigger next spin */ }
                 isZeusJackpot -> {
                     kotlinx.coroutines.delay(500L)
                     showJackpotOverlay = true
                 }
+                // Skip overlays during Hermes auto-reshuffle (VM handles the flow)
+                uiState.isAutoReshuffling -> { /* VM will auto-trigger next spin */ }
                 isThreeOfAKind -> {
                     kotlinx.coroutines.delay(500L)
                     showWinOverlay = true
@@ -67,6 +73,11 @@ fun SlotScreen(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
+        // Block back button during active spin
+        BackHandler(enabled = uiState.spinPhase != SpinPhase.IDLE) {
+            // Swallow back press during spin
+        }
+
         BackgroundScene(background = uiState.currentBackground) {
             Column(
                 modifier = Modifier
@@ -79,6 +90,12 @@ fun SlotScreen(
                 TopBar(
                     coinBalance = uiState.coinBalance,
                     winStreak = uiState.winStreak
+                )
+
+                // Spin counter
+                SpinCounter(
+                    used = uiState.paidSpinsUsed,
+                    max = GameConstants.MAX_SPINS_PER_SESSION
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -145,7 +162,7 @@ fun SlotScreen(
                     enter = fadeIn() + slideInVertically { it },
                     exit = fadeOut()
                 ) {
-                    LowBalanceWarning()
+                    LowBalanceWarning(onClick = onNavigateToDailyBonus)
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -154,7 +171,11 @@ fun SlotScreen(
                 SpinButton(
                     isFree = uiState.freeSpinsRemaining > 0,
                     isEnabled = uiState.spinPhase == SpinPhase.IDLE &&
-                            (uiState.freeSpinsRemaining > 0 || uiState.coinBalance >= GameConstants.SPIN_COST),
+                            !uiState.sessionComplete &&
+                            (uiState.freeSpinsRemaining > 0 || (
+                                uiState.coinBalance >= GameConstants.SPIN_COST &&
+                                uiState.paidSpinsUsed < GameConstants.MAX_SPINS_PER_SESSION
+                            )),
                     spinCost = GameConstants.SPIN_COST,
                     onClick = onSpin
                 )
@@ -206,6 +227,20 @@ fun SlotScreen(
                     }
                 )
             }
+        }
+
+        // Session complete overlay
+        AnimatedVisibility(
+            visible = uiState.sessionComplete && uiState.spinPhase == SpinPhase.IDLE,
+            enter = fadeIn(tween(400)),
+            exit = fadeOut(tween(300))
+        ) {
+            SessionCompleteOverlay(
+                finalScore = uiState.coinBalance,
+                onSubmitScore = onSubmitScore,
+                onPlayAgain = onNewSession,
+                onViewLeaderboard = onViewLeaderboard
+            )
         }
     }
 }
@@ -314,23 +349,27 @@ private fun ReelRow(
     }
 }
 
+private data class BannerState(val text: String, val color: Color, val fontSize: Int)
+
 @Composable
 private fun GodBannerText(uiState: SlotUiState) {
-    data class BannerState(val text: String, val color: Color, val fontSize: Int)
-
-    val bannerState = when (uiState.spinPhase) {
-        SpinPhase.IDLE -> BannerState("Spin the Reels", OlympusCream, 16)
-        SpinPhase.SPINNING -> BannerState("The gods decide...", OlympusCream, 16)
-        SpinPhase.RESOLVING -> BannerState("Revealing fate...", OlympusCream, 16)
-        SpinPhase.RESULT -> when (val result = uiState.winResult) {
-            is WinResult.ThreeOfAKind -> BannerState(
-                "${result.god.displayName} - ${result.god.domain}", OlympusGold, 20
-            )
-            is WinResult.TwoOfAKind -> BannerState(
-                "Minor Win!", OlympusGoldLight, 16
-            )
-            is WinResult.NoMatch -> BannerState("No favour this time", Color(0xFFBBBBBB), 16)
-            null -> BannerState("", OlympusCream, 16)
+    val bannerState by remember(uiState.spinPhase, uiState.winResult) {
+        derivedStateOf {
+            when (uiState.spinPhase) {
+                SpinPhase.IDLE -> BannerState("Spin the Reels", OlympusCream, 16)
+                SpinPhase.SPINNING -> BannerState("The gods decide...", OlympusCream, 16)
+                SpinPhase.RESOLVING -> BannerState("Revealing fate...", OlympusCream, 16)
+                SpinPhase.RESULT -> when (val result = uiState.winResult) {
+                    is WinResult.ThreeOfAKind -> BannerState(
+                        "${result.god.displayName} - ${result.god.domain}", OlympusGold, 20
+                    )
+                    is WinResult.TwoOfAKind -> BannerState(
+                        "Minor Win!", OlympusGoldLight, 16
+                    )
+                    is WinResult.NoMatch -> BannerState("No favour this time", Color(0xFFBBBBBB), 16)
+                    null -> BannerState("", OlympusCream, 16)
+                }
+            }
         }
     }
 
@@ -476,7 +515,227 @@ private fun FreeSpinsBadge(count: Int) {
 }
 
 @Composable
-private fun LowBalanceWarning() {
+private fun SpinCounter(used: Int, max: Int) {
+    val remaining = max - used
+    val progressColor = when {
+        remaining <= 5 -> Color(0xFFFF6B6B)
+        remaining <= 10 -> OlympusGoldLight
+        else -> OlympusCream.copy(alpha = 0.7f)
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.Center
+    ) {
+        val shape = RoundedCornerShape(12.dp)
+        Text(
+            text = "  $used / $max spins  ",
+            color = progressColor,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp,
+            modifier = Modifier
+                .clip(shape)
+                .background(Color.Black.copy(alpha = 0.4f))
+                .border(1.dp, progressColor.copy(alpha = 0.3f), shape)
+                .padding(horizontal = 10.dp, vertical = 3.dp)
+        )
+    }
+}
+
+@Composable
+private fun SessionCompleteOverlay(
+    finalScore: Int,
+    onSubmitScore: (String) -> Unit,
+    onPlayAgain: () -> Unit,
+    onViewLeaderboard: () -> Unit
+) {
+    var playerName by remember { mutableStateOf("") }
+    var scoreSubmitted by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.85f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .padding(horizontal = 32.dp)
+                .imePadding()
+        ) {
+            Text(
+                text = "SESSION COMPLETE",
+                color = OlympusGold,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 4.sp,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "30 spins used",
+                color = OlympusCream.copy(alpha = 0.6f),
+                fontSize = 14.sp,
+                letterSpacing = 1.sp
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Text(
+                text = "FINAL SCORE",
+                color = OlympusCream.copy(alpha = 0.7f),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 3.sp
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = "%,d".format(finalScore),
+                color = OlympusGold,
+                fontSize = 48.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 2.sp
+            )
+
+            Text(
+                text = "COINS",
+                color = OlympusGoldDark,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 4.sp
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            if (!scoreSubmitted) {
+                // Name input
+                Text(
+                    text = "ENTER YOUR NAME",
+                    color = OlympusCream.copy(alpha = 0.7f),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 2.sp
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                val fieldShape = RoundedCornerShape(12.dp)
+                androidx.compose.material3.OutlinedTextField(
+                    value = playerName,
+                    onValueChange = { if (it.length <= 16) playerName = it },
+                    placeholder = {
+                        Text(
+                            "Your name",
+                            color = OlympusCream.copy(alpha = 0.3f)
+                        )
+                    },
+                    singleLine = true,
+                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = OlympusGold,
+                        unfocusedTextColor = OlympusCream,
+                        cursorColor = OlympusGold,
+                        focusedBorderColor = OlympusGold,
+                        unfocusedBorderColor = OlympusGoldDark.copy(alpha = 0.5f)
+                    ),
+                    shape = fieldShape,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Submit button
+                val submitShape = RoundedCornerShape(16.dp)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(submitShape)
+                        .background(
+                            Brush.horizontalGradient(listOf(OlympusGoldDark, OlympusGold, OlympusGoldDark))
+                        )
+                        .clickable {
+                            onSubmitScore(playerName)
+                            scoreSubmitted = true
+                        }
+                        .padding(vertical = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "SUBMIT SCORE",
+                        color = Color(0xFF1A0E3E),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 2.sp
+                    )
+                }
+            } else {
+                // After submission — show leaderboard + play again
+                Text(
+                    text = "Score saved!",
+                    color = OlympusGold,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                val lbShape = RoundedCornerShape(16.dp)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(lbShape)
+                        .background(
+                            Brush.horizontalGradient(listOf(OlympusGoldDark, OlympusGold, OlympusGoldDark))
+                        )
+                        .clickable(onClick = onViewLeaderboard)
+                        .padding(vertical = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "VIEW LEADERBOARD",
+                        color = Color(0xFF1A0E3E),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 2.sp
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Play Again button (always visible)
+            val playShape = RoundedCornerShape(16.dp)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(playShape)
+                    .border(1.5.dp, OlympusGold.copy(alpha = 0.5f), playShape)
+                    .clickable(onClick = onPlayAgain)
+                    .padding(vertical = 14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "PLAY AGAIN",
+                    color = OlympusGold,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 2.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LowBalanceWarning(onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -485,6 +744,7 @@ private fun LowBalanceWarning() {
             .clip(shape)
             .background(Color(0xCC1A0A00))
             .border(1.dp, OlympusGoldDark.copy(alpha = 0.5f), shape)
+            .clickable(onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 10.dp)
     ) {
         Text(
