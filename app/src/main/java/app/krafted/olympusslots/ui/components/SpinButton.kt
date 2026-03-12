@@ -212,7 +212,7 @@ fun SpinButton(
                     Text(
                         text = if (isFree) "FREE" else "SPIN",
                         style = androidx.compose.ui.text.TextStyle(
-                            fontSize = 28.sp,
+                            fontSize = if (isFree) 22.sp else 28.sp,
                             fontWeight = FontWeight.Black,
                             letterSpacing = 4.sp,
                             color = if (isEnabled) OlympusPurpleDeep else Color.DarkGray,
@@ -223,7 +223,17 @@ fun SpinButton(
                             ) else null
                         )
                     )
-                    if (!isFree && isEnabled) {
+                    if (isFree && isEnabled) {
+                        Text(
+                            text = "SPIN",
+                            style = androidx.compose.ui.text.TextStyle(
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 3.sp,
+                                color = OlympusPurpleDeep.copy(alpha = 0.8f)
+                            )
+                        )
+                    } else if (!isFree && isEnabled) {
                         Spacer(modifier = Modifier.height(2.dp))
                         Box(
                             modifier = Modifier
@@ -243,16 +253,6 @@ fun SpinButton(
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 2.sp,
                                 color = OlympusPurpleDeep.copy(alpha = 0.7f)
-                            )
-                        )
-                    } else if (isFree && isEnabled) {
-                        Text(
-                            text = "SPIN",
-                            style = androidx.compose.ui.text.TextStyle(
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Black,
-                                letterSpacing = 3.sp,
-                                color = OlympusPurpleDeep.copy(alpha = 0.8f)
                             )
                         )
                     }

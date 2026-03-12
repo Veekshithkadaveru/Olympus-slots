@@ -20,6 +20,21 @@ interface PlayerDao {
     @Query("UPDATE player_data SET lastBonusClaim = :timestamp WHERE id = 1")
     suspend fun updateLastBonusClaim(timestamp: Long)
 
+    @Query("UPDATE player_data SET currentWinStreak = :streak WHERE id = 1")
+    suspend fun updateWinStreak(streak: Int)
+
+    @Query("UPDATE player_data SET totalSpins = totalSpins + 1 WHERE id = 1")
+    suspend fun incrementTotalSpins()
+
+    @Query("UPDATE player_data SET totalWins = totalWins + 1 WHERE id = 1")
+    suspend fun incrementTotalWins()
+
+    @Query("UPDATE player_data SET jackpotCount = jackpotCount + 1 WHERE id = 1")
+    suspend fun incrementJackpotCount()
+
+    @Query("UPDATE player_data SET bestWinStreak = :streak WHERE id = 1 AND bestWinStreak < :streak")
+    suspend fun updateBestWinStreak(streak: Int)
+
     @Insert
     suspend fun insertLeaderboardEntry(entry: LeaderboardEntry)
 

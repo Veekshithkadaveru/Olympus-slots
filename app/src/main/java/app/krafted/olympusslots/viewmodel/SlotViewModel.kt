@@ -32,7 +32,10 @@ data class SlotUiState(
     val dailyBonusAvailable: Boolean = false,
     val currentBackground: Background = Background.NEUTRAL,
     val winStreak: Int = 0,
-    val lastGodPower: GodPower? = null
+    val lastGodPower: GodPower? = null,
+    val hermesReshuffleCount: Int = 0,
+    val isAutoReshuffling: Boolean = false,
+    val isLowBalance: Boolean = false
 )
 
 class SlotViewModel(private val playerDao: PlayerDao) : ViewModel() {
@@ -72,66 +75,117 @@ class SlotViewModel(private val playerDao: PlayerDao) : ViewModel() {
             coinBalance = it.coinBalance - cost,
             freeSpinsRemaining = if (isFree) it.freeSpinsRemaining - 1 else it.freeSpinsRemaining,
             winResult = null,
-            lastGodPower = null
+            lastGodPower = null,
+            currentBackground = Background.NEUTRAL
         )}
 
         viewModelScope.launch {
-            val (r1, r2, r3) = ReelEngine.spinAllReels()
-            delay(200)
+            executeSpin(isFree)
+        }
+    }
+
+    private suspend fun executeSpin(isFree: Boolean) {
+        val stateBeforeSpin = _uiState.value
+        val (r1, r2, r3) = ReelEngine.spinAllReels()
+        delay(200)
+        _uiState.update { it.copy(
+            reelSymbols = listOf(r1, r2, r3),
+            spinPhase = SpinPhase.RESOLVING
+        )}
+
+        delay(GameConstants.REEL_3_STOP_MS + 300)
+        val result = WinResolver.resolve(r1, r2, r3)
+        val background = resolveBackground(result)
+        val isWin = result !is WinResult.NoMatch
+
+        var payout = when (result) {
+            is WinResult.ThreeOfAKind -> result.payout
+            is WinResult.TwoOfAKind -> result.payout
+            is WinResult.NoMatch -> 0
+        }
+
+        // Apply Apollo double (only on paid spins with a win)
+        val consumeApollo = stateBeforeSpin.apolloDoubleActive && !isFree
+        if (consumeApollo && payout > 0) {
+            payout *= 2
+        }
+
+        // God powers only trigger on 3-of-a-kind
+        val godPower = GodPowerEngine.resolve(result)
+
+        // Hermes reshuffle: auto-respin if under max limit
+        val isHermesReshuffle = godPower is GodPower.Reshuffle &&
+                stateBeforeSpin.hermesReshuffleCount < GameConstants.MAX_HERMES_RESHUFFLES
+
+        _uiState.update {
+            var newState = it.copy(
+                spinPhase = SpinPhase.RESULT,
+                winResult = result,
+                coinBalance = it.coinBalance + payout,
+                currentBackground = background,
+                lastGodPower = if (godPower is GodPower.None) null else godPower,
+                apolloDoubleActive = if (consumeApollo) false else it.apolloDoubleActive,
+                hermesReshuffleCount = if (isHermesReshuffle) it.hermesReshuffleCount + 1 else 0
+            )
+            newState = applyGodPower(newState, godPower, isHermesReshuffle)
+            newState = updateWinStreak(newState, isWin)
+            newState = newState.copy(
+                isLowBalance = newState.coinBalance < GameConstants.COIN_FLOOR && newState.freeSpinsRemaining <= 0
+            )
+            newState
+        }
+
+        // Persist to Room
+        val currentState = _uiState.value
+        playerDao.updateCoinBalance(currentState.coinBalance)
+        playerDao.updateWinStreak(currentState.winStreak)
+        playerDao.updateBestWinStreak(currentState.winStreak)
+        playerDao.incrementTotalSpins()
+        if (isWin) playerDao.incrementTotalWins()
+        if (result is WinResult.ThreeOfAKind && result.god == God.ZEUS) {
+            playerDao.incrementJackpotCount()
+        }
+
+        // Hermes auto-respin: wait for result display, then auto-trigger (costs 0 coins)
+        if (isHermesReshuffle) {
+            delay(1500) // Brief pause to show Hermes result
             _uiState.update { it.copy(
-                reelSymbols = listOf(r1, r2, r3),
-                spinPhase = SpinPhase.RESOLVING
+                spinPhase = SpinPhase.IDLE,
+                isAutoReshuffling = true,
+                currentBackground = Background.NEUTRAL
             )}
-
-            delay(GameConstants.REEL_3_STOP_MS + 300)
-            val result = WinResolver.resolve(r1, r2, r3)
-            val background = resolveBackground(result)
-            val isWin = result !is WinResult.NoMatch
-
-            var payout = when (result) {
-                is WinResult.ThreeOfAKind -> result.payout
-                is WinResult.TwoOfAKind -> result.payout
-                is WinResult.NoMatch -> 0
-            }
-
-            // Apply Apollo double (only on paid spins)
-            if (state.apolloDoubleActive && !isFree && payout > 0) {
-                payout *= 2
-            }
-
-            val godPower = if (result is WinResult.ThreeOfAKind) {
-                GodPowerEngine.getGodPower(result.god)
-            } else null
-
-            _uiState.update {
-                var newState = it.copy(
-                    spinPhase = SpinPhase.RESULT,
-                    winResult = result,
-                    coinBalance = it.coinBalance + payout,
-                    currentBackground = background,
-                    lastGodPower = godPower,
-                    apolloDoubleActive = if (!isFree) false else it.apolloDoubleActive
-                )
-                newState = applyGodPower(newState, godPower)
-                newState = updateWinStreak(newState, isWin)
-                newState
-            }
-
-            playerDao.updateCoinBalance(_uiState.value.coinBalance)
+            delay(300)
+            _uiState.update { it.copy(
+                spinPhase = SpinPhase.SPINNING,
+                winResult = null,
+                lastGodPower = null
+            )}
+            executeSpin(isFree = true)
+        } else {
+            _uiState.update { it.copy(isAutoReshuffling = false) }
         }
     }
 
     fun resetToIdle() {
-        _uiState.update { it.copy(spinPhase = SpinPhase.IDLE) }
+        _uiState.update { it.copy(
+            spinPhase = SpinPhase.IDLE,
+            hermesReshuffleCount = 0,
+            currentBackground = Background.NEUTRAL
+        )}
     }
 
-    private fun applyGodPower(state: SlotUiState, power: GodPower?): SlotUiState {
+    private fun applyGodPower(state: SlotUiState, power: GodPower?, isHermesReshuffle: Boolean = false): SlotUiState {
         return when (power) {
             is GodPower.FreeSpins -> state.copy(freeSpinsRemaining = state.freeSpinsRemaining + power.count)
             is GodPower.AllWilds -> state.copy(freeSpinsRemaining = state.freeSpinsRemaining + 1)
             is GodPower.DoubleNextSpin -> state.copy(apolloDoubleActive = true)
             is GodPower.DailyBonusSpin -> state.copy(dailyBonusAvailable = true)
-            is GodPower.Reshuffle -> state.copy(freeSpinsRemaining = state.freeSpinsRemaining + 1)
+            is GodPower.Reshuffle -> {
+                // Auto-reshuffle handles the free re-spin automatically; no extra free spin
+                // If max reshuffles reached, grant a free spin instead
+                if (isHermesReshuffle) state
+                else state.copy(freeSpinsRemaining = state.freeSpinsRemaining + 1)
+            }
             is GodPower.Jackpot -> state
             is GodPower.None -> state
             null -> state

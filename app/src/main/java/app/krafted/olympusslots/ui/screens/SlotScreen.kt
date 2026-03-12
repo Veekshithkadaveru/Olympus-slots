@@ -47,15 +47,18 @@ fun SlotScreen(
     LaunchedEffect(uiState.spinPhase) {
         if (uiState.spinPhase == SpinPhase.RESULT) {
             when {
+                // Skip overlays during Hermes auto-reshuffle (VM handles the flow)
+                uiState.isAutoReshuffling -> { /* VM will auto-trigger next spin */ }
                 isZeusJackpot -> {
                     kotlinx.coroutines.delay(500L)
                     showJackpotOverlay = true
                 }
-                isWin -> {
+                isThreeOfAKind -> {
                     kotlinx.coroutines.delay(500L)
                     showWinOverlay = true
                 }
                 else -> {
+                    // 2-of-a-kind and no-match auto-dismiss
                     kotlinx.coroutines.delay(2500L)
                     onResetToIdle()
                 }
@@ -136,6 +139,15 @@ fun SlotScreen(
                     FreeSpinsBadge(count = uiState.freeSpinsRemaining)
                 }
 
+                // Low balance warning
+                AnimatedVisibility(
+                    visible = uiState.isLowBalance && uiState.spinPhase == SpinPhase.IDLE,
+                    enter = fadeIn() + slideInVertically { it },
+                    exit = fadeOut()
+                ) {
+                    LowBalanceWarning()
+                }
+
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Spin button
@@ -151,44 +163,49 @@ fun SlotScreen(
             }
         }
 
-        // Win overlay (non-Zeus)
+        // Win overlay (3-of-a-kind only, excludes Zeus jackpot)
         AnimatedVisibility(
             visible = showWinOverlay,
             enter = fadeIn(tween(200)),
             exit = fadeOut(tween(300))
         ) {
-            val dismissWin = {
-                showWinOverlay = false
-                onResetToIdle()
-            }
-            when (val result = uiState.winResult) {
-                is WinResult.ThreeOfAKind -> WinOverlayThreeOfAKind(
-                    god = result.god,
-                    payout = result.payout,
-                    godPower = uiState.lastGodPower,
-                    onDismiss = dismissWin
-                )
-                is WinResult.TwoOfAKind -> WinOverlayTwoOfAKind(
-                    payout = result.payout,
-                    onDismiss = dismissWin
-                )
-                else -> {}
+            Box(modifier = Modifier.fillMaxSize()) {
+                // God power particle effects ONLY for 3-of-a-kind
+                if (winningGod != null && isThreeOfAKind) {
+                    GodPowerOverlay(god = winningGod, modifier = Modifier.fillMaxSize())
+                }
+                val dismissWin = {
+                    showWinOverlay = false
+                    onResetToIdle()
+                }
+                val result = uiState.winResult
+                if (result is WinResult.ThreeOfAKind) {
+                    WinOverlayThreeOfAKind(
+                        god = result.god,
+                        payout = result.payout,
+                        godPower = uiState.lastGodPower,
+                        onDismiss = dismissWin
+                    )
+                }
             }
         }
 
-        // Jackpot overlay
+        // Jackpot overlay (Zeus 3-of-a-kind)
         AnimatedVisibility(
             visible = showJackpotOverlay,
             enter = fadeIn(tween(200)),
             exit = fadeOut(tween(400))
         ) {
-            JackpotOverlay(
-                coinsWon = (uiState.winResult as? WinResult.ThreeOfAKind)?.payout ?: 500,
-                onDismiss = {
-                    showJackpotOverlay = false
-                    onResetToIdle()
-                }
-            )
+            Box(modifier = Modifier.fillMaxSize()) {
+                GodPowerOverlay(god = God.ZEUS, modifier = Modifier.fillMaxSize())
+                JackpotOverlay(
+                    coinsWon = (uiState.winResult as? WinResult.ThreeOfAKind)?.payout ?: 500,
+                    onDismiss = {
+                        showJackpotOverlay = false
+                        onResetToIdle()
+                    }
+                )
+            }
         }
     }
 }
@@ -310,7 +327,7 @@ private fun GodBannerText(uiState: SlotUiState) {
                 "${result.god.displayName} - ${result.god.domain}", OlympusGold, 20
             )
             is WinResult.TwoOfAKind -> BannerState(
-                "${result.god.displayName} appears!", OlympusGoldLight, 16
+                "Minor Win!", OlympusGoldLight, 16
             )
             is WinResult.NoMatch -> BannerState("No favour this time", Color(0xFFBBBBBB), 16)
             null -> BannerState("", OlympusCream, 16)
@@ -376,7 +393,7 @@ private fun WinResultDisplay(uiState: SlotUiState) {
                     letterSpacing = 2.sp
                 )
 
-                // God power description
+                // God power description (only for 3-of-a-kind)
                 val powerText = when (uiState.lastGodPower) {
                     is GodPower.Jackpot -> "JACKPOT!"
                     is GodPower.FreeSpins -> "+${(uiState.lastGodPower as GodPower.FreeSpins).count} Free Spins!"
@@ -454,6 +471,35 @@ private fun FreeSpinsBadge(count: Int) {
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 1.sp
+        )
+    }
+}
+
+@Composable
+private fun LowBalanceWarning() {
+    val shape = RoundedCornerShape(12.dp)
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .padding(horizontal = 32.dp)
+            .clip(shape)
+            .background(Color(0xCC1A0A00))
+            .border(1.dp, OlympusGoldDark.copy(alpha = 0.5f), shape)
+            .padding(horizontal = 20.dp, vertical = 10.dp)
+    ) {
+        Text(
+            text = "The gods' favour wanes...",
+            color = OlympusGold,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 1.sp
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = "Claim your Daily Blessing!",
+            color = OlympusCream.copy(alpha = 0.7f),
+            fontSize = 12.sp,
+            letterSpacing = 0.5.sp
         )
     }
 }

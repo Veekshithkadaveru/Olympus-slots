@@ -20,4 +20,9 @@ object GodPowerEngine {
         God.DEMETER -> GodPower.DailyBonusSpin
         God.HERMES -> GodPower.Reshuffle
     }
+
+    fun resolve(result: WinResult): GodPower = when (result) {
+        is WinResult.ThreeOfAKind -> getGodPower(result.god)
+        else -> GodPower.None
+    }
 }

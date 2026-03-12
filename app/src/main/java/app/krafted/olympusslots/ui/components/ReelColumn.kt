@@ -194,6 +194,7 @@ fun ReelColumn(
         ) {
             strip.forEachIndexed { index, god ->
                 val isCenterSlot = index == 2
+                val isWinningSymbol = isWinning && isCenterSlot && spinPhase == SpinPhase.RESULT
 
                 // Size / alpha / stretch differ between spinning and stopped
                 val imgSize = when {
@@ -209,6 +210,7 @@ fun ReelColumn(
                 // Slight vertical stretch while spinning → motion-blur illusion
                 val scaleYMult = if (isActivelySpinning) 1.12f else 1f
                 val popScale   = if (isCenterSlot && !isActivelySpinning) popAnim.value else 1f
+                val finalPopScale = if (isWinningSymbol) popScale * 1.15f else popScale
 
                 Box(
                     modifier = Modifier
@@ -216,17 +218,35 @@ fun ReelColumn(
                         .fillMaxWidth(),
                     contentAlignment = Alignment.Center
                 ) {
+                    val baseModifier = Modifier.size(imgSize)
+                    val winningModifier = if (isWinningSymbol) {
+                        Modifier.shadow(
+                            elevation = 20.dp,
+                            shape = RoundedCornerShape(12.dp),
+                            ambientColor = accentColor,
+                            spotColor = accentColor
+                        ).border(
+                            width = 2.dp,
+                            color = accentColor,
+                            shape = RoundedCornerShape(12.dp)
+                        ).background(
+                            color = accentColor.copy(alpha = 0.3f),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    } else Modifier
+
                     Image(
                         painter = painterResource(id = god.drawableRes),
                         contentDescription = god.displayName,
                         contentScale = ContentScale.Fit,
-                        modifier = Modifier
-                            .size(imgSize)
+                        modifier = baseModifier
+                            .then(winningModifier)
                             .graphicsLayer {
                                 this.alpha  = alpha
-                                this.scaleX = popScale
-                                this.scaleY = scaleYMult * popScale
+                                this.scaleX = finalPopScale
+                                this.scaleY = scaleYMult * finalPopScale
                             }
+                            .padding(if (isWinningSymbol) 4.dp else 0.dp)
                     )
                 }
             }
